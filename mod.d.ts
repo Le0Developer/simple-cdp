@@ -311,7 +311,7 @@ declare const CONNECTION_REFUSED_ERROR_CODE: string;
  */
 declare const CONNECTION_ERROR_CODE: string;
 
-export type {
+export {
   activateTarget,
   CDP,
   cdp,
@@ -322,3 +322,6 @@ export type {
   CONNECTION_REFUSED_ERROR_CODE,
   CONNECTION_ERROR_CODE,
 };
+
+export type { CDPOptions, CDPValue, CDPConnection, CDPEvent, CDPTargetInfo };
+
