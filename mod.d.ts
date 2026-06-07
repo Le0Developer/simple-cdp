@@ -1,3 +1,5 @@
+import type ProtocolMapping from "./cdp-mapping.d.ts";
+
 /**
  * Options of the connection
  */
@@ -108,16 +110,16 @@ declare interface CDPConnection extends EventTarget {
 /**
  * Event of domain event listeners
  */
-declare interface CDPEvent {
+declare interface CDPEvent<Params = any, Type extends string = string> {
   /**
    * The event type
    */
-  type: string;
+  type: Type;
   /**
    * The parameters
    */
   // deno-lint-ignore no-explicit-any
-  params: any;
+  params: Params;
   /**
    * The session ID
    */
@@ -130,21 +132,82 @@ declare interface CDPEvent {
  * @param event The event
  * @returns The result
  */
-declare type CDPEventListener = (event: CDPEvent) => void | Promise<void>;
+declare type CDPEventListener<Params = any, Type extends string = string> = (
+  event: CDPEvent<Params, Type>,
+) => void | Promise<void>;
+
+declare type CDPCommandName = keyof ProtocolMapping.Commands & string;
+
+declare type CDPProtocolEventName = keyof ProtocolMapping.Events & string;
+
+declare type CDPDomainPropertyKey =
+  | (CDPCommandName extends `${infer Domain}.${string}` ? Domain : never)
+  | (CDPProtocolEventName extends `${infer Domain}.${string}` ? Domain : never);
+
+declare type CDPDomainCommandName<Domain extends CDPDomainPropertyKey> =
+  Extract<CDPCommandName, `${Domain}.${string}`>;
+
+declare type CDPDomainEventName<Domain extends CDPDomainPropertyKey> = Extract<
+  CDPProtocolEventName,
+  `${Domain}.${string}`
+>;
+
+declare type CDPDomainMethodName<Command extends CDPCommandName> =
+  Command extends `${string}.${infer Method}` ? Uncapitalize<Method> : never;
+
+declare type CDPDomainEventType<EventName extends CDPProtocolEventName> =
+  EventName extends `${string}.${infer Type}` ? Uncapitalize<Type> : never;
+
+declare type CDPDomainEventTypeName<Domain extends CDPDomainPropertyKey> =
+  CDPDomainEventType<CDPDomainEventName<Domain>>;
+
+declare type CDPDomainEventForType<
+  Domain extends CDPDomainPropertyKey,
+  Type extends CDPDomainEventTypeName<Domain>,
+> = Extract<CDPProtocolEventName, `${Domain}.${Type}`>;
+
+declare type CDPDomainEventParams<EventName extends CDPProtocolEventName> =
+  ProtocolMapping.Events[EventName] extends [infer Params] ? Params : undefined;
+
+declare type CDPCommandParams<Command extends CDPCommandName> =
+  ProtocolMapping.Commands[Command]["paramsType"] extends [infer Params]
+    ? Params
+    : never;
+
+declare type CDPCommandReturn<Command extends CDPCommandName> =
+  ProtocolMapping.Commands[Command]["returnType"];
+
+declare type CDPCommandMethod<Command extends CDPCommandName> =
+  ProtocolMapping.Commands[Command]["paramsType"] extends []
+    ? (args?: null, sessionId?: string) => Promise<CDPCommandReturn<Command>>
+    : {} extends CDPCommandParams<Command>
+      ? (
+          args?: CDPCommandParams<Command> | null,
+          sessionId?: string,
+        ) => Promise<CDPCommandReturn<Command>>
+      : (
+          args: CDPCommandParams<Command>,
+          sessionId?: string,
+        ) => Promise<CDPCommandReturn<Command>>;
 
 /**
  * Domain event listener registration methods
  */
-declare class CDPDomainListeners {
+declare class CDPDomainListeners<
+  Domain extends CDPDomainPropertyKey = CDPDomainPropertyKey,
+> {
   /**
    * Add an event listener
    *
    * @param type The type of the event
    * @param listener The listener of the event
    */
-  addEventListener(
-    type: string,
-    listener: CDPEventListener,
+  addEventListener<Type extends CDPDomainEventTypeName<Domain>>(
+    type: Type,
+    listener: CDPEventListener<
+      CDPDomainEventParams<CDPDomainEventForType<Domain, Type>>,
+      CDPDomainEventForType<Domain, Type>
+    >,
   ): void;
   /**
    * Remove an event listener
@@ -152,16 +215,21 @@ declare class CDPDomainListeners {
    * @param type The type of the event
    * @param listener The listener of the event
    */
-  removeEventListener(
-    type: string,
-    listener: CDPEventListener,
+  removeEventListener<Type extends CDPDomainEventTypeName<Domain>>(
+    type: Type,
+    listener: CDPEventListener<
+      CDPDomainEventParams<CDPDomainEventForType<Domain, Type>>,
+      CDPDomainEventForType<Domain, Type>
+    >,
   ): void;
 }
 
 /**
  * Domain methods (e.g. `enable()`, `disable()`...)
  */
-declare type CDPDomainMethods = {
+declare type CDPDomainMethods<
+  Domain extends CDPDomainPropertyKey = CDPDomainPropertyKey,
+> = {
   /**
    * Method of the domain
    *
@@ -169,17 +237,15 @@ declare type CDPDomainMethods = {
    * @param sessionId The session ID
    * @returns The result
    */
-  [Key in Exclude<string, keyof CDPDomainListeners> as Uncapitalize<Key>]: (
-    args?: CDPObject | null,
-    sessionId?: string,
-    // deno-lint-ignore no-explicit-any
-  ) => Promise<any>;
+  [Command in CDPDomainCommandName<Domain> as CDPDomainMethodName<Command>]: CDPCommandMethod<Command>;
 };
 
 /**
  * Domain of the API (e.g. `Page`, `Target`, `Runtime`...)
  */
-declare type CDPDomain = CDPDomainListeners & CDPDomainMethods;
+declare type CDPDomain<
+  Domain extends CDPDomainPropertyKey = CDPDomainPropertyKey,
+> = CDPDomainListeners<Domain> & CDPDomainMethods<Domain>;
 
 /**
  * Members of the API
@@ -199,12 +265,12 @@ declare class CDPMembers {
   reset(): void;
 }
 
-/**
- * Property key of a domain (e.g. "Page", "Target", "Runtime"...)
- */
-declare type CDPDomainPropertyKey = Capitalize<
-  Exclude<string, keyof CDPMembers>
->;
+declare type CDPProtocolDomains = {
+  /**
+   * Domain of the API (e.g. `Page`, `Target`, `Runtime`...)
+   */
+  [Domain in CDPDomainPropertyKey]: CDPDomain<Domain>;
+};
 
 /**
  * Target info
@@ -243,10 +309,6 @@ declare class CDP extends CDPMembers {
    */
   constructor(options?: CDPOptions);
   /**
-   * The domains (e.g. "Page", "Target", "Runtime"...)
-   */
-  [key: CDPDomainPropertyKey]: CDPDomain;
-  /**
    * Get the targets
    *
    * @returns The targets
@@ -275,6 +337,8 @@ declare class CDP extends CDPMembers {
    */
   static closeTarget(targetId: string): Promise<string>;
 }
+
+declare interface CDP extends CDPProtocolDomains {}
 
 /**
  * API object

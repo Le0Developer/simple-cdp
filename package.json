@@ -24,6 +24,9 @@
             }
         }
     },
+    "scripts": {
+        "update-cdp": "curl -L https://github.com/ChromeDevTools/devtools-protocol/raw/refs/heads/master/types/protocol.d.ts -o cdp.d.ts && curl -L https://github.com/ChromeDevTools/devtools-protocol/raw/refs/heads/master/types/protocol-mapping.d.ts -o cdp-mapping.d.ts"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/gildas-lormeau/simple-cdp.git"
